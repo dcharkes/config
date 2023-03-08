@@ -198,4 +198,20 @@ void main() {
     final result = config.getPath('build.out_dir');
     expect(result!.path, resolvedPath.path);
   });
+
+  test('provide pre-parsed config', () {
+    const path3 = 'path/in/config_file/';
+    final config = Config(
+      cliDefines: [],
+      environment: {},
+      fileParsed: {
+        'build': {
+          'out-dir': path3,
+        }
+      },
+    );
+
+    final result = config.getString('build.out_dir');
+    expect(result, path3);
+  });
 }

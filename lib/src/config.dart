@@ -73,7 +73,7 @@ class Config {
   ///
   /// [cliDefines] must be a list of '<key>=<value>'.
   ///
-  /// [fileContents] must be valid JSON or YAML.
+  /// [fileContents] or [fileParsed] must be valid JSON or YAML.
   /// If provided [fileSourceUri], is used to provide better error messages on
   /// parsing the configuration file.
   factory Config({
@@ -81,10 +81,13 @@ class Config {
     Map<String, String> environment = const {},
     String? fileContents,
     Uri? fileSourceUri,
+    Map<String, dynamic>? fileParsed,
   }) {
     // Parse config file.
     final Map<String, dynamic> fileConfig;
-    if (fileContents == null) {
+    if (fileParsed != null) {
+      fileConfig = FileParser().parseMap(fileParsed);
+    } else if (fileContents == null) {
       fileConfig = {};
     } else {
       fileConfig = FileParser().parse(
