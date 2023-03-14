@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:config/src/cli_parser.dart';
 import 'package:config/src/environment_parser.dart';
 import 'package:config/src/file_parser.dart';
+import 'package:config/src/utils/uri.dart';
 
 /// A hierarchical configuration object.
 ///
@@ -134,36 +135,38 @@ class Config {
     );
   }
 
+  String getString(String key, {Iterable<String>? validValues}) {
+    final value = getOptionalString(key, validValues: validValues);
+    _throwIfNull(key, value);
+    return value!;
+  }
+
   /// Lookup a string value in this config.
   ///
   /// First tries CLI argument defines, then environment variables, and
   /// finally the config file.
   ///
   /// Throws if one of the configs does not contain the expected value type.
-  String? getString(String hierarchicalKey) {
-    final cliValue = _getCliSingleValue(hierarchicalKey);
-    if (cliValue != null) {
-      return cliValue;
+  String? getOptionalString(String key, {Iterable<String>? validValues}) {
+    String? value;
+    value ??= _getCliSingleValue(key);
+    value ??= _environment[key];
+    value ??= getFileValue<String>(key);
+    if (validValues != null) {
+      _throwIfUnexpectedValue(key, value, validValues);
     }
-
-    final envValue = _environment[hierarchicalKey];
-    if (envValue != null) {
-      return envValue;
-    }
-
-    return getFileValue<String>(hierarchicalKey);
+    return value;
   }
 
-  List<String>? getStringList(
-    String hierarchicalKey, {
+  List<String>? getOptionalStringList(
+    String key, {
     bool combineAllConfigs = true,
     String? splitCliPattern,
     String? splitEnvironmentPattern,
   }) {
     List<String>? result;
 
-    final cliValue =
-        _getCliStringList(hierarchicalKey, splitPattern: splitCliPattern);
+    final cliValue = _getCliStringList(key, splitPattern: splitCliPattern);
     if (cliValue != null) {
       if (combineAllConfigs) {
         (result ??= []).addAll(cliValue);
@@ -172,8 +175,8 @@ class Config {
       }
     }
 
-    final envValue = _getEnvironmentStringList(hierarchicalKey,
-        splitPattern: splitEnvironmentPattern);
+    final envValue =
+        _getEnvironmentStringList(key, splitPattern: splitEnvironmentPattern);
     if (envValue != null) {
       if (combineAllConfigs) {
         (result ??= []).addAll(envValue);
@@ -182,8 +185,7 @@ class Config {
       }
     }
 
-    final fileValue =
-        getFileValue<List<dynamic>>(hierarchicalKey)?.cast<String>();
+    final fileValue = getFileValue<List<dynamic>>(key)?.cast<String>();
     if (fileValue != null) {
       if (combineAllConfigs) {
         (result ??= []).addAll(fileValue);
@@ -204,55 +206,74 @@ class Config {
     'TRUE': true,
   };
 
-  bool? getBool(String hierarchicalKey) {
-    final cliValue = _getCliSingleValue(hierarchicalKey);
-    if (cliValue != null) {
-      final cliBoolValue = boolStrings[cliValue];
-      if (cliBoolValue != null) {
-        return cliBoolValue;
-      }
-      throw Exception(
-          "Unexpected value '$cliValue' for key '$hierarchicalKey' in CLI defines. Expected one of: ${boolStrings.keys}.");
-    }
-
-    final envValue = _environment[hierarchicalKey];
-    if (envValue != null) {
-      final envBoolValue = boolStrings[envValue];
-      if (envBoolValue != null) {
-        return envBoolValue;
-      }
-      throw Exception(
-          "Unexpected value '$envValue' for key '$hierarchicalKey' in environment variable. Expected one of: ${boolStrings.keys}.");
-    }
-
-    return getFileValue<bool>(hierarchicalKey);
+  bool getBool(String key) {
+    final value = getOptionalBool(key);
+    _throwIfNull(key, value);
+    return value!;
   }
 
-  Uri? getPath(String hierarchicalKey, {bool resolveFileUri = true}) {
-    final cliValue = _getCliSingleValue(hierarchicalKey);
+  bool? getOptionalBool(String key) {
+    String? stringValue;
+    stringValue ??= _getCliSingleValue(key);
+    stringValue ??= _environment[key];
+    if (stringValue != null) {
+      _throwIfUnexpectedValue(key, stringValue, boolStrings.keys);
+      return boolStrings[stringValue]!;
+    }
+    return getFileValue<bool>(key);
+  }
+
+  Uri getPath(
+    String key, {
+    bool resolveFileUri = true,
+    bool mustExist = false,
+  }) {
+    final value = getOptionalPath(key,
+        resolveFileUri: resolveFileUri, mustExist: mustExist);
+    _throwIfNull(key, value);
+    return value!;
+  }
+
+  Uri? getOptionalPath(
+    String key, {
+    bool resolveFileUri = true,
+    bool mustExist = false,
+  }) {
+    final value = _getOptionalPath(key, resolveFileUri: resolveFileUri);
+    if (mustExist && value != null) {
+      _throwIfNotExists(key, value);
+    }
+    return value;
+  }
+
+  Uri? _getOptionalPath(
+    String key, {
+    bool resolveFileUri = true,
+  }) {
+    final cliValue = _getCliSingleValue(key);
     if (cliValue != null) {
-      return Uri(path: cliValue);
+      return _fileSystemPathToUri(cliValue);
     }
 
-    final envValue = _environment[hierarchicalKey];
+    final envValue = _environment[key];
     if (envValue != null) {
-      return Uri(path: envValue);
+      return _fileSystemPathToUri(envValue);
     }
 
-    final path = getString(hierarchicalKey);
+    final path = getOptionalString(key);
     if (path == null) {
       return null;
     }
-    final unresolvedUri = Uri(path: path);
-    final fileUri = _fileUri;
-    if (!resolveFileUri || fileUri == null) {
-      return unresolvedUri;
+    if (resolveFileUri) {
+      if (_fileUri != null) {
+        return _fileUri!.resolve(path);
+      }
     }
-    return fileUri.resolveUri(unresolvedUri);
+    return _fileSystemPathToUri(path);
   }
 
-  List<Uri>? getPathList(
-    String hierarchicalKey, {
+  List<Uri>? getOptionalPathList(
+    String key, {
     bool combineAllConfigs = true,
     String? splitCliPattern,
     String? splitEnvironmentPattern,
@@ -260,8 +281,7 @@ class Config {
   }) {
     List<Uri>? result;
 
-    final cliValue =
-        _getCliStringList(hierarchicalKey, splitPattern: splitCliPattern);
+    final cliValue = _getCliStringList(key, splitPattern: splitCliPattern);
     if (cliValue != null) {
       if (combineAllConfigs) {
         (result ??= []).addAll(cliValue.map((e) => Uri(path: e)));
@@ -270,8 +290,8 @@ class Config {
       }
     }
 
-    final envValue = _getEnvironmentStringList(hierarchicalKey,
-        splitPattern: splitEnvironmentPattern);
+    final envValue =
+        _getEnvironmentStringList(key, splitPattern: splitEnvironmentPattern);
     if (envValue != null) {
       if (combineAllConfigs) {
         (result ??= []).addAll(envValue.map((e) => Uri(path: e)));
@@ -280,8 +300,7 @@ class Config {
       }
     }
 
-    final fileValue =
-        getFileValue<List<dynamic>>(hierarchicalKey)?.cast<String>();
+    final fileValue = getFileValue<List<dynamic>>(key)?.cast<String>();
     if (fileValue != null) {
       final fileUri = _fileUri;
       final fileValueUris = fileValue.map((e) {
@@ -305,15 +324,15 @@ class Config {
   ///
   /// Only available for the configuration file, cannot be overwritten with
   /// commandline defines or environment variables.
-  T? getFileValue<T>(String hierarchicalKey) {
+  T? getFileValue<T>(String key) {
     Object? cursor = _file;
     String current = '';
-    for (final keyPart in hierarchicalKey.split('.')) {
+    for (final keyPart in key.split('.')) {
       if (cursor == null) {
         return null;
       }
       if (cursor is! Map) {
-        throw Exception(
+        throw FormatException(
             "Unexpected value '$cursor' for key '$current' in config file. Expected a Map.");
       } else {
         cursor = cursor[keyPart];
@@ -321,30 +340,29 @@ class Config {
       current += '.$keyPart';
     }
     if (cursor is! T?) {
-      throw Exception(
+      throw FormatException(
           "Unexpected value '$cursor' for key '$current' in config file. Expected a $T.");
     }
     return cursor;
   }
 
-  String? _getCliSingleValue(String hierarchicalKey) {
-    final cliValue = _cli[hierarchicalKey];
+  String? _getCliSingleValue(String key) {
+    final cliValue = _cli[key];
     if (cliValue == null) {
       return null;
     }
     if (cliValue.length != 1) {
-      throw Exception(
-          "Not exactly one value was passed for '$hierarchicalKey' in the CLI defines. Values passed: $cliValue");
+      throw FormatException(
+          "Not exactly one value was passed for '$key' in the CLI defines. Values passed: $cliValue");
     }
     return cliValue.single;
   }
 
-
   List<String>? _getCliStringList(
-    String hierarchicalKey, {
+    String key, {
     String? splitPattern,
   }) {
-    final cliValue = _cli[hierarchicalKey];
+    final cliValue = _cli[key];
     if (cliValue == null) {
       return null;
     }
@@ -355,10 +373,10 @@ class Config {
   }
 
   List<String>? _getEnvironmentStringList(
-    String hierarchicalKey, {
+    String key, {
     String? splitPattern,
   }) {
-    final envValue = _environment[hierarchicalKey];
+    final envValue = _environment[key];
     if (envValue == null) {
       return null;
     }
@@ -368,6 +386,33 @@ class Config {
     return [envValue];
   }
 
+  void _throwIfNull(String key, Object? value) {
+    if (value == null) {
+      throw FormatException("No value was provided for required key: $key");
+    }
+  }
+
+  void _throwIfUnexpectedValue<T>(
+      String key, T value, Iterable<T> validValues) {
+    if (!validValues.contains(value)) {
+      throw FormatException(
+          "Unexpected value '$value' for key '$key'. Expected one of: ${validValues.map((e) => "'$e'").join(', ')}.");
+    }
+  }
+
+  void _throwIfNotExists(String key, Uri value) {
+    if (!value.fileSystemEntity.existsSync()) {
+      throw FormatException("Path '$value' for key '$key' doesn't exist.");
+    }
+  }
+
   @override
   String toString() => 'Config(cli: $_cli, env: $_environment, file: $_file)';
+}
+
+Uri _fileSystemPathToUri(String path) {
+  if (path.endsWith(Platform.pathSeparator)) {
+    return Uri.directory(path);
+  }
+  return Uri.file(path);
 }

@@ -14,7 +14,7 @@ class FileParser {
       sourceUrl: sourceUrl,
     );
     if (parsedYaml is! Map) {
-      throw Exception('YAML config must be set of key value pairs.');
+      throw FormatException('YAML config must be set of key value pairs.');
     }
     return parseMap(parsedYaml);
   }
@@ -35,7 +35,7 @@ class FileParser {
     final regex = RegExp('([a-z-_]+)');
     final match = regex.matchAsPrefix(key);
     if (match == null || match.group(0) != key) {
-      throw Exception(
+      throw FormatException(
           "Define '$key' does not match expected pattern '${regex.pattern}'.");
     }
     return key.replaceAll('-', '_');

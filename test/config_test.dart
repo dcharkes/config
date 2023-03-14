@@ -5,7 +5,7 @@ import 'package:config/config.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('getStringList', () {
+  test('getOptionalStringList', () {
     const path1 = 'path/in/cli_arguments/';
     const path2 = 'path/in/cli_arguments_2/';
     const path3 = 'path/in/environment/';
@@ -33,7 +33,7 @@ void main() {
     );
 
     {
-      final result = config.getStringList(
+      final result = config.getOptionalStringList(
         'build.out_dir',
         combineAllConfigs: true,
         splitEnvironmentPattern: ':',
@@ -42,7 +42,7 @@ void main() {
     }
 
     {
-      final result = config.getStringList(
+      final result = config.getOptionalStringList(
         'build.out_dir',
         combineAllConfigs: false,
         splitEnvironmentPattern: ':',
@@ -51,7 +51,7 @@ void main() {
     }
   });
 
-  test('getString cli prescedence', () {
+  test('getOptionalString cli prescedence', () {
     const path1 = 'path/in/cli_arguments/';
     const path2 = 'path/in/environment/';
     const path3 = 'path/in/config_file/';
@@ -71,13 +71,13 @@ void main() {
       ),
     );
 
-    final result = config.getString(
+    final result = config.getOptionalString(
       'build.out_dir',
     );
     expect(result, path1);
   });
 
-  test('getString environment prescedence', () {
+  test('getOptionalString environment prescedence', () {
     const path2 = 'path/in/environment/';
     const path3 = 'path/in/config_file/';
     final config = Config(
@@ -94,13 +94,13 @@ void main() {
       ),
     );
 
-    final result = config.getString(
+    final result = config.getOptionalString(
       'build.out_dir',
     );
     expect(result, path2);
   });
 
-  test('getString config file', () {
+  test('getOptionalString config file', () {
     const path3 = 'path/in/config_file/';
     final config = Config(
       cliDefines: [],
@@ -114,38 +114,38 @@ void main() {
       ),
     );
 
-    final result = config.getString(
+    final result = config.getOptionalString(
       'build.out_dir',
     );
     expect(result, path3);
   });
 
-  test('getBool define', () {
+  test('getOptionalBool define', () {
     final config = Config(
       cliDefines: ['my_bool=true'],
     );
 
-    expect(config.getBool('my_bool'), true);
+    expect(config.getOptionalBool('my_bool'), true);
   });
 
-  test('getBool environment', () {
+  test('getOptionalBool environment', () {
     final config = Config(
       environment: {
         'MY_BOOL': 'true',
       },
     );
 
-    expect(config.getBool('my_bool'), true);
+    expect(config.getOptionalBool('my_bool'), true);
   });
 
-  test('getBool  file', () {
+  test('getOptionalBool  file', () {
     final config = Config(
       fileContents: jsonEncode(
         {'my-bool': true},
       ),
     );
 
-    expect(config.getBool('my_bool'), true);
+    expect(config.getOptionalBool('my_bool'), true);
   });
 
   test('Read file and parse CLI args', () async {
@@ -169,7 +169,7 @@ void main() {
       },
     );
 
-    final result = config.getString('build.out_dir');
+    final result = config.getOptionalString('build.out_dir');
     expect(result, 'path/in/cli_arguments/');
   });
 
@@ -195,7 +195,7 @@ void main() {
       ],
     );
 
-    final result = config.getPath('build.out_dir');
+    final result = config.getOptionalPath('build.out_dir');
     expect(result!.path, resolvedPath.path);
   });
 
@@ -211,7 +211,41 @@ void main() {
       },
     );
 
-    final result = config.getString('build.out_dir');
+    final result = config.getOptionalString('build.out_dir');
     expect(result, path3);
   });
+
+  test('path exists', () async {
+    await _inTempDir((tempUri) async {
+      final config = Config(
+        cliDefines: [],
+        environment: {},
+        fileParsed: {
+          'build': {
+            'out-dir': tempUri.path,
+          }
+        },
+      );
+
+      final result = config.getOptionalPath('build.out_dir', mustExist: true);
+      expect(result, tempUri);
+    });
+  });
+}
+
+const keepTempKey = 'KEEP_TEMPORARY_DIRECTORIES';
+
+Future<void> _inTempDir(
+  Future<void> Function(Uri tempUri) fun, {
+  String? prefix,
+}) async {
+  final tempDir = await Directory.systemTemp.createTemp(prefix);
+  try {
+    await fun(tempDir.uri);
+  } finally {
+    if (!Platform.environment.containsKey(keepTempKey) ||
+        Platform.environment[keepTempKey]!.isEmpty) {
+      await tempDir.delete(recursive: true);
+    }
+  }
 }
