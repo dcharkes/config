@@ -4,10 +4,9 @@
 
 import 'dart:io';
 
-import 'package:config/src/cli_parser.dart';
-import 'package:config/src/environment_parser.dart';
-import 'package:config/src/file_parser.dart';
-import 'package:config/src/utils/uri.dart';
+import 'cli_parser.dart';
+import 'environment_parser.dart';
+import 'file_parser.dart';
 
 /// A hierarchical configuration object.
 ///
@@ -388,7 +387,7 @@ class Config {
 
   void _throwIfNull(String key, Object? value) {
     if (value == null) {
-      throw FormatException("No value was provided for required key: $key");
+      throw FormatException('No value was provided for required key: $key');
     }
   }
 
@@ -415,4 +414,13 @@ Uri _fileSystemPathToUri(String path) {
     return Uri.directory(path);
   }
   return Uri.file(path);
+}
+
+extension UriExtension on Uri {
+  FileSystemEntity get fileSystemEntity {
+    if (path.endsWith(Platform.pathSeparator)) {
+      return Directory.fromUri(this);
+    }
+    return File.fromUri(this);
+  }
 }
