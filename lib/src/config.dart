@@ -17,10 +17,10 @@ import 'file_parser.dart';
 /// Configuration can be provided in three ways:
 /// 1. commandline argument defines as `-Dsome_key=some_value`,
 /// 2. environment variables as `SOME_KEY=some_value`, and
-/// 3. config files as JSON or YAML as `{'some-key':'some_value'}`.
+/// 3. config files as JSON or YAML as `{'some-key': 'some_value'}`.
 ///
 /// The default lookup behavior is that commandline argument defines take
-/// prescedence over environment variables, which takes prescedence over the
+/// precedence over environment variables, which take precedence over the
 /// configuration file.
 ///
 /// The config is hierarchical in nature, using `.` as the hierarchy separator
@@ -29,12 +29,13 @@ import 'file_parser.dart';
 /// as hierarchy separator.
 ///
 /// The config is opinionated on the format of the keys.
-/// In command-line arguments, they should be lower-cased alphanumeric
-/// characters or underscores.
-/// In environment variables, they should be upper-cased alphanumeric
-/// characters or underscores.
-/// In config files, they should be lower-cased alphanumeric
-/// characters or dashes.
+/// * Command-line argument keys should be lower-cased alphanumeric
+///   characters or underscores.
+/// * Environment variables keys should be upper-cased alphanumeric
+///    characters or underscores.
+/// * Config files keys should be lower-cased alphanumeric
+///   characters or dashes.
+///
 /// In the API they are made available lower-cased and with underscores.
 class Config {
   /// Configuration options passed in via CLI arguments.
@@ -71,29 +72,39 @@ class Config {
 
   /// Constructs a config by parsing the three sources.
   ///
-  /// [cliDefines] must be a list of '<key>=<value>'.
+  /// If provided, [cliDefines] must be a list of '<key>=<value>'.
   ///
-  /// [fileContents] or [fileParsed] must be valid JSON or YAML.
+  /// If provided, [environment] must be a map containing environment varibales.
+  ///
+  /// At most one of [fileContents] or [fileParsed] must be provided.
+  /// If provided, [fileContents] must be valid JSON or YAML.
+  /// If provided, [fileParsed] must be valid parsed YSON or YAML (maps, lists,
+  /// strings, integers, and booleans).
+  ///
   /// If provided [fileSourceUri], is used to provide better error messages on
   /// parsing the configuration file.
   factory Config({
     List<String> cliDefines = const [],
     Map<String, String> environment = const {},
+    Map<String, dynamic>? fileParsed,
     String? fileContents,
     Uri? fileSourceUri,
-    Map<String, dynamic>? fileParsed,
   }) {
     // Parse config file.
+    if (_countNonNulls([fileContents, fileParsed]) > 1) {
+      throw ArgumentError(
+          'Provide at most one of `fileParsed` and `fileContents`.');
+    }
     final Map<String, dynamic> fileConfig;
     if (fileParsed != null) {
       fileConfig = FileParser().parseMap(fileParsed);
-    } else if (fileContents == null) {
-      fileConfig = {};
-    } else {
+    } else if (fileContents != null) {
       fileConfig = FileParser().parse(
         fileContents,
         sourceUrl: fileSourceUri,
       );
+    } else {
+      fileConfig = {};
     }
 
     // Parse CLI argument defines.
@@ -111,6 +122,13 @@ class Config {
   }
 
   /// Constructs a config by parsing CLI arguments and loading the config file.
+  ///
+  /// The [args] must be commandline arguments.
+  ///
+  /// If provided, [environment] must be a map containing environment varibales.
+  /// If not provided, [environment] defaults to [Platform.environment].
+  ///
+  /// This async constructor is intended to be used directly in CLI files.
   static Future<Config> fromArgs({
     required List<String> args,
     Map<String, String>? environment,
@@ -134,18 +152,26 @@ class Config {
     );
   }
 
-  String getString(String key, {Iterable<String>? validValues}) {
-    final value = getOptionalString(key, validValues: validValues);
-    _throwIfNull(key, value);
-    return value!;
-  }
-
   /// Lookup a string value in this config.
   ///
   /// First tries CLI argument defines, then environment variables, and
   /// finally the config file.
   ///
   /// Throws if one of the configs does not contain the expected value type.
+  ///
+  /// If [validValues] is provided, throws if an unxpected value is provided.
+  String getString(String key, {Iterable<String>? validValues}) {
+    final value = getOptionalString(key, validValues: validValues);
+    _throwIfNull(key, value);
+    return value!;
+  }
+
+  /// Lookup a nullable string value in this config.
+  ///
+  /// First tries CLI argument defines, then environment variables, and
+  /// finally the config file.
+  ///
+  /// If [validValues] is provided, throws if an unxpected value is provided.
   String? getOptionalString(String key, {Iterable<String>? validValues}) {
     String? value;
     value ??= _getCliSingleValue(key);
@@ -157,6 +183,20 @@ class Config {
     return value;
   }
 
+  /// Lookup a nullable string list in this config.
+  ///
+  /// First tries CLI argument defines, then environment variables, and
+  /// finally the config file.
+  ///
+  /// If [combineAllConfigs] combines results from cli, environment, and
+  /// config file. Otherwise, precedence rules apply.
+  ///
+  /// If provided, [splitCliPattern] splits cli defines.
+  /// For example: `-Dfoo=bar;baz` can be split on `;`.
+  /// If not provided, a list can still be provided with multiple cli defines.
+  /// For example: `-Dfoo=bar -Dfoo=baz`.
+  ///
+  /// If provided, [splitEnvironmentPattern] splits environment values.
   List<String>? getOptionalStringList(
     String key, {
     bool combineAllConfigs = true,
@@ -205,12 +245,30 @@ class Config {
     'TRUE': true,
   };
 
+  /// Lookup a boolean value in this config.
+  ///
+  /// First tries CLI argument defines, then environment variables, and
+  /// finally the config file.
+  ///
+  /// For cli defines and environment variables, the value must be one of
+  /// [boolStrings].
+  /// For the config file, it must be a boolean.
+  ///
+  /// Throws if one of the configs does not contain the expected value type.
   bool getBool(String key) {
     final value = getOptionalBool(key);
     _throwIfNull(key, value);
     return value!;
   }
 
+  /// Lookup an optional boolean value in this config.
+  ///
+  /// First tries CLI argument defines, then environment variables, and
+  /// finally the config file.
+  ///
+  /// For cli defines and environment variables, the value must be one of
+  /// [boolStrings].
+  /// For the config file, it must be a boolean.
   bool? getOptionalBool(String key) {
     String? stringValue;
     stringValue ??= _getCliSingleValue(key);
@@ -222,6 +280,20 @@ class Config {
     return getFileValue<bool>(key);
   }
 
+  /// Lookup a path in this config.
+  ///
+  /// First tries CLI argument defines, then environment variables, and
+  /// finally the config file.
+  ///
+  /// Throws if one of the configs does not contain the expected value type.
+  ///
+  /// If [resolveFileUri], resolves the paths in config file relative to the
+  /// config file.
+  ///
+  /// If [mustExist], throws if the path doesn't resolve to a file or directory
+  /// on the file system.
+  ///
+  /// Throws if one of the configs does not contain the expected value type.
   Uri getPath(
     String key, {
     bool resolveFileUri = true,
@@ -233,6 +305,18 @@ class Config {
     return value!;
   }
 
+  /// Lookup an optional path in this config.
+  ///
+  /// First tries CLI argument defines, then environment variables, and
+  /// finally the config file.
+  ///
+  /// Throws if one of the configs does not contain the expected value type.
+  ///
+  /// If [resolveFileUri], resolves the paths in config file relative to the
+  /// config file.
+  ///
+  /// If [mustExist], throws if the path doesn't resolve to a file or directory
+  /// on the file system.
   Uri? getOptionalPath(
     String key, {
     bool resolveFileUri = true,
@@ -271,6 +355,17 @@ class Config {
     return _fileSystemPathToUri(path);
   }
 
+  /// Lookup a list of paths in this config.
+  ///
+  /// If [combineAllConfigs] combines results from cli, environment, and
+  /// config file. Otherwise, precedence rules apply.
+  ///
+  /// If provided, [splitCliPattern] splits cli defines.
+  ///
+  /// If provided, [splitEnvironmentPattern] splits environment values.
+  ///
+  /// If [resolveFileUri], resolves the paths in config file relative to the
+  /// config file.
   List<Uri>? getOptionalPathList(
     String key, {
     bool combineAllConfigs = true,
@@ -319,7 +414,7 @@ class Config {
     return result;
   }
 
-  /// Access to config values structured as lists and maps.
+  /// Lookup a [T] in the config file.
   ///
   /// Only available for the configuration file, cannot be overwritten with
   /// commandline defines or environment variables.
@@ -416,7 +511,7 @@ Uri _fileSystemPathToUri(String path) {
   return Uri.file(path);
 }
 
-extension UriExtension on Uri {
+extension on Uri {
   FileSystemEntity get fileSystemEntity {
     if (path.endsWith(Platform.pathSeparator)) {
       return Directory.fromUri(this);
@@ -424,3 +519,5 @@ extension UriExtension on Uri {
     return File.fromUri(this);
   }
 }
+
+int _countNonNulls(List<Object?> objects) => objects.whereType<Object>().length;

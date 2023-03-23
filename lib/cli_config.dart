@@ -1,5 +1,5 @@
 /// A library to take config values from configuration files, CLI arguments,
 /// and environment variables.
-library config;
+library cli_config;
 
 export 'src/config.dart';

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:config/config.dart';
+import 'package:cli_config/cli_config.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -51,7 +51,7 @@ void main() {
     }
   });
 
-  test('getOptionalString cli prescedence', () {
+  test('getOptionalString cli precedence', () {
     const path1 = 'path/in/cli_arguments/';
     const path2 = 'path/in/environment/';
     const path3 = 'path/in/config_file/';
@@ -77,7 +77,7 @@ void main() {
     expect(result, path1);
   });
 
-  test('getOptionalString environment prescedence', () {
+  test('getOptionalString environment precedence', () {
     const path2 = 'path/in/environment/';
     const path3 = 'path/in/config_file/';
     final config = Config(
