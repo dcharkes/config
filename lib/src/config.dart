@@ -5,8 +5,11 @@
 import 'dart:io';
 
 import 'cli_parser.dart';
+import 'cli_provider.dart';
 import 'environment_parser.dart';
+import 'environment_provider.dart';
 import 'file_parser.dart';
+import 'file_provider.dart';
 
 /// A hierarchical configuration object.
 ///
@@ -38,36 +41,17 @@ import 'file_parser.dart';
 ///
 /// In the API they are made available lower-cased and with underscores.
 class Config {
-  /// Configuration options passed in via CLI arguments.
-  ///
-  /// Options can be passed multiple times, so the values here are a list.
-  ///
-  /// Stored as a flat non-hierarchical structure, keys contain `.`.
-  final Map<String, List<String>> _cli;
+  final CliProvider _cliProvider;
+  final EnvironmentProvider _environmentProvider;
+  final FileProvider _fileProvider;
 
-  /// Configuration options passed in via the [Platform.environment].
-  ///
-  /// The keys have been transformed by [EnvironmentParser.parseKey].
-  ///
-  /// Environment values are left intact.
-  ///
-  /// Stored as a flat non-hierarchical structure, keys contain `.`.
-  final Map<String, String> _environment;
-
-  /// Configuration options passed in via a JSON or YAML configuration file.
-  ///
-  /// Stored as a partial hierarchical data structure. The values can be maps
-  /// in which subsequent parts of a key after a `.` can be resolved.
-  final Map<String, dynamic> _file;
-
-  /// If provided, used to resolve paths within [_file].
-  final Uri? _fileUri;
+  /// Config providers, ordered by precedence.
+  late final _providers = [_cliProvider, _environmentProvider, _fileProvider];
 
   Config._(
-    this._cli,
-    this._environment,
-    this._file,
-    this._fileUri,
+    this._cliProvider,
+    this._environmentProvider,
+    this._fileProvider,
   );
 
   /// Constructs a config by parsing the three sources.
@@ -114,10 +98,9 @@ class Config {
     final environmentConfig = EnvironmentParser().parse(environment);
 
     return Config._(
-      cliConfig,
-      environmentConfig,
-      fileConfig,
-      fileSourceUri,
+      CliProvider(cliConfig),
+      EnvironmentProvider(environmentConfig),
+      FileProvider(fileConfig, fileSourceUri),
     );
   }
 
@@ -174,9 +157,9 @@ class Config {
   /// If [validValues] is provided, throws if an unxpected value is provided.
   String? getOptionalString(String key, {Iterable<String>? validValues}) {
     String? value;
-    value ??= _getCliSingleValue(key);
-    value ??= _environment[key];
-    value ??= getFileValue<String>(key);
+    for (final provider in _providers) {
+      value ??= provider.getOptionalString(key);
+    }
     if (validValues != null) {
       _throwIfUnexpectedValue(key, value, validValues);
     }
@@ -204,35 +187,23 @@ class Config {
     String? splitEnvironmentPattern,
   }) {
     List<String>? result;
-
-    final cliValue = _getCliStringList(key, splitPattern: splitCliPattern);
-    if (cliValue != null) {
-      if (combineAllConfigs) {
-        (result ??= []).addAll(cliValue);
-      } else {
-        return cliValue;
+    for (final entry in {
+      _cliProvider: splitCliPattern,
+      _environmentProvider: splitEnvironmentPattern,
+      _fileProvider: null
+    }.entries) {
+      final provider = entry.key;
+      final splitPattern = entry.value;
+      final value =
+          provider.getOptionalStringList(key, splitPattern: splitPattern);
+      if (value != null) {
+        if (combineAllConfigs) {
+          (result ??= []).addAll(value);
+        } else {
+          return value;
+        }
       }
     }
-
-    final envValue =
-        _getEnvironmentStringList(key, splitPattern: splitEnvironmentPattern);
-    if (envValue != null) {
-      if (combineAllConfigs) {
-        (result ??= []).addAll(envValue);
-      } else {
-        return envValue;
-      }
-    }
-
-    final fileValue = getFileValue<List<dynamic>>(key)?.cast<String>();
-    if (fileValue != null) {
-      if (combineAllConfigs) {
-        (result ??= []).addAll(fileValue);
-      } else {
-        return fileValue;
-      }
-    }
-
     return result;
   }
 
@@ -270,14 +241,11 @@ class Config {
   /// [boolStrings].
   /// For the config file, it must be a boolean.
   bool? getOptionalBool(String key) {
-    String? stringValue;
-    stringValue ??= _getCliSingleValue(key);
-    stringValue ??= _environment[key];
-    if (stringValue != null) {
-      _throwIfUnexpectedValue(key, stringValue, boolStrings.keys);
-      return boolStrings[stringValue]!;
+    bool? value;
+    for (final provider in _providers) {
+      value ??= provider.getOptionalBool(key);
     }
-    return getFileValue<bool>(key);
+    return value;
   }
 
   /// Lookup a path in this config.
@@ -322,37 +290,14 @@ class Config {
     bool resolveFileUri = true,
     bool mustExist = false,
   }) {
-    final value = _getOptionalPath(key, resolveFileUri: resolveFileUri);
+    Uri? value;
+    value ??= _cliProvider.getOptionalPath(key);
+    value ??= _environmentProvider.getOptionalPath(key);
+    value ??= _fileProvider.getOptionalPath(key, resolveUri: resolveFileUri);
     if (mustExist && value != null) {
       _throwIfNotExists(key, value);
     }
     return value;
-  }
-
-  Uri? _getOptionalPath(
-    String key, {
-    bool resolveFileUri = true,
-  }) {
-    final cliValue = _getCliSingleValue(key);
-    if (cliValue != null) {
-      return _fileSystemPathToUri(cliValue);
-    }
-
-    final envValue = _environment[key];
-    if (envValue != null) {
-      return _fileSystemPathToUri(envValue);
-    }
-
-    final path = getOptionalString(key);
-    if (path == null) {
-      return null;
-    }
-    if (resolveFileUri) {
-      if (_fileUri != null) {
-        return _fileUri!.resolve(path);
-      }
-    }
-    return _fileSystemPathToUri(path);
   }
 
   /// Lookup a list of paths in this config.
@@ -374,43 +319,23 @@ class Config {
     bool resolveFileUri = true,
   }) {
     List<Uri>? result;
-
-    final cliValue = _getCliStringList(key, splitPattern: splitCliPattern);
-    if (cliValue != null) {
-      if (combineAllConfigs) {
-        (result ??= []).addAll(cliValue.map((e) => Uri(path: e)));
-      } else {
-        return cliValue.map((e) => Uri(path: e)).toList();
-      }
-    }
-
-    final envValue =
-        _getEnvironmentStringList(key, splitPattern: splitEnvironmentPattern);
-    if (envValue != null) {
-      if (combineAllConfigs) {
-        (result ??= []).addAll(envValue.map((e) => Uri(path: e)));
-      } else {
-        return envValue.map((e) => Uri(path: e)).toList();
-      }
-    }
-
-    final fileValue = getFileValue<List<dynamic>>(key)?.cast<String>();
-    if (fileValue != null) {
-      final fileUri = _fileUri;
-      final fileValueUris = fileValue.map((e) {
-        final unresolvedUri = Uri(path: e);
-        if (!resolveFileUri || fileUri == null) {
-          return unresolvedUri;
+    for (final entry in {
+      _cliProvider: splitCliPattern,
+      _environmentProvider: splitEnvironmentPattern,
+      _fileProvider: null
+    }.entries) {
+      final provider = entry.key;
+      final splitPattern = entry.value;
+      final value =
+          provider.getOptionalPathList(key, splitPattern: splitPattern);
+      if (value != null) {
+        if (combineAllConfigs) {
+          (result ??= []).addAll(value);
+        } else {
+          return value;
         }
-        return fileUri.resolveUri(unresolvedUri);
-      });
-      if (combineAllConfigs) {
-        (result ??= []).addAll(fileValueUris);
-      } else {
-        return fileValueUris.toList();
       }
     }
-
     return result;
   }
 
@@ -418,67 +343,7 @@ class Config {
   ///
   /// Only available for the configuration file, cannot be overwritten with
   /// commandline defines or environment variables.
-  T? getFileValue<T>(String key) {
-    Object? cursor = _file;
-    String current = '';
-    for (final keyPart in key.split('.')) {
-      if (cursor == null) {
-        return null;
-      }
-      if (cursor is! Map) {
-        throw FormatException(
-            "Unexpected value '$cursor' for key '$current' in config file. Expected a Map.");
-      } else {
-        cursor = cursor[keyPart];
-      }
-      current += '.$keyPart';
-    }
-    if (cursor is! T?) {
-      throw FormatException(
-          "Unexpected value '$cursor' for key '$current' in config file. Expected a $T.");
-    }
-    return cursor;
-  }
-
-  String? _getCliSingleValue(String key) {
-    final cliValue = _cli[key];
-    if (cliValue == null) {
-      return null;
-    }
-    if (cliValue.length != 1) {
-      throw FormatException(
-          "Not exactly one value was passed for '$key' in the CLI defines. Values passed: $cliValue");
-    }
-    return cliValue.single;
-  }
-
-  List<String>? _getCliStringList(
-    String key, {
-    String? splitPattern,
-  }) {
-    final cliValue = _cli[key];
-    if (cliValue == null) {
-      return null;
-    }
-    if (splitPattern != null) {
-      return [for (final value in cliValue) ...value.split(splitPattern)];
-    }
-    return cliValue;
-  }
-
-  List<String>? _getEnvironmentStringList(
-    String key, {
-    String? splitPattern,
-  }) {
-    final envValue = _environment[key];
-    if (envValue == null) {
-      return null;
-    }
-    if (splitPattern != null) {
-      return envValue.split(splitPattern);
-    }
-    return [envValue];
-  }
+  T? getFileValue<T>(String key) => _fileProvider.getValue(key);
 
   void _throwIfNull(String key, Object? value) {
     if (value == null) {
@@ -501,14 +366,7 @@ class Config {
   }
 
   @override
-  String toString() => 'Config(cli: $_cli, env: $_environment, file: $_file)';
-}
-
-Uri _fileSystemPathToUri(String path) {
-  if (path.endsWith(Platform.pathSeparator)) {
-    return Uri.directory(path);
-  }
-  return Uri.file(path);
+  String toString() => 'Config($_providers)';
 }
 
 extension on Uri {
