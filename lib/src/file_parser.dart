@@ -21,7 +21,7 @@ class FileParser {
 
   Map<String, Object> parseMap(Map<dynamic, dynamic> input) => {
         for (final entry in input.entries)
-          parseKey(entry.key): parseValue(entry.value),
+          parseKey(entry.key as String): parseValue(entry.value as Object),
       };
 
   Object parseValue(Object value) {

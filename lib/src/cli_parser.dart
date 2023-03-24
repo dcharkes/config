@@ -40,8 +40,8 @@ class DefinesParser {
     for (final arg in args) {
       final match = regex.matchAsPrefix(arg);
       if (match == null || match.group(0) != arg) {
-        throw FormatException(
-            "Define '$arg' does not match expected pattern '${regex.pattern}'.");
+        throw FormatException("Define '$arg' does not match expected pattern "
+            "'${regex.pattern}'.");
       }
       final key = match.group(1)!;
       final value = match.group(2)!;

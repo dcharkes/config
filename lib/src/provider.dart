@@ -42,7 +42,8 @@ abstract class Provider {
       String key, T value, Iterable<T> validValues) {
     if (!validValues.contains(value)) {
       throw FormatException(
-          "Unexpected value '$value' for key '$key'. Expected one of: ${validValues.map((e) => "'$e'").join(', ')}.");
+          "Unexpected value '$value' for key '$key'. Expected one of: "
+          "${validValues.map((e) => "'$e'").join(', ')}.");
     }
   }
 }

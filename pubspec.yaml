@@ -12,5 +12,5 @@ dependencies:
 
 dev_dependencies:
   coverage: ^1.6.3
-  lints: ^2.0.0
+  dart_flutter_team_lints: ^1.0.0
   test: ^1.21.0

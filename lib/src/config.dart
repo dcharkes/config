@@ -128,7 +128,7 @@ class Config {
     }
 
     return Config(
-      cliDefines: results['define'],
+      cliDefines: results['define'] as List<String>,
       environment: environment ?? Platform.environment,
       fileContents: fileContents,
       fileSourceUri: fileSourceUri,
@@ -354,8 +354,8 @@ class Config {
   void _throwIfUnexpectedValue<T>(
       String key, T value, Iterable<T> validValues) {
     if (!validValues.contains(value)) {
-      throw FormatException(
-          "Unexpected value '$value' for key '$key'. Expected one of: ${validValues.map((e) => "'$e'").join(', ')}.");
+      throw FormatException("Unexpected value '$value' for key '$key'. "
+          "Expected one of: ${validValues.map((e) => "'$e'").join(', ')}.");
     }
   }
 

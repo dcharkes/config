@@ -25,7 +25,8 @@ class CliProvider extends Provider {
     }
     if (value.length > 1) {
       throw FormatException(
-          "More than one value was passed for '$key' in the CLI defines. Values passed: $value");
+          "More than one value was passed for '$key' in the CLI defines."
+          ' Values passed: $value');
     }
     return value.single;
   }

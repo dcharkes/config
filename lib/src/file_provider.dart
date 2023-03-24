@@ -74,14 +74,15 @@ class FileProvider extends Provider {
 
   T? getValue<T>(String key) {
     Object? cursor = _file;
-    String current = '';
+    var current = '';
     for (final keyPart in key.split('.')) {
       if (cursor == null) {
         return null;
       }
       if (cursor is! Map) {
         throw FormatException(
-            "Unexpected value '$cursor' for key '$current' in config file. Expected a Map.");
+            "Unexpected value '$cursor' for key '$current' in config file. "
+            'Expected a Map.');
       } else {
         cursor = cursor[keyPart];
       }
@@ -89,7 +90,8 @@ class FileProvider extends Provider {
     }
     if (cursor is! T?) {
       throw FormatException(
-          "Unexpected value '$cursor' for key '$current' in config file. Expected a $T.");
+          "Unexpected value '$cursor' for key '$current' in config file. "
+          'Expected a $T.');
     }
     return cursor;
   }
