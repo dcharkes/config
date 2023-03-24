@@ -56,7 +56,7 @@ class EnvironmentProvider extends Provider {
     assert(resolveUri == false);
     final stringValue = getOptionalString(key);
     if (stringValue != null) {
-      return _fileSystemPathToUri(stringValue);
+      return Provider.fileSystemPathToUri(stringValue);
     }
     return null;
   }
@@ -74,11 +74,4 @@ class EnvironmentProvider extends Provider {
 
   @override
   String toString() => 'EnvironmentProvider($_environment)';
-}
-
-Uri _fileSystemPathToUri(String path) {
-  if (path.endsWith(Platform.pathSeparator)) {
-    return Uri.directory(path);
-  }
-  return Uri.file(path);
 }

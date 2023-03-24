@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'dart:io';
-
 import 'config.dart';
 import 'provider.dart';
 
@@ -65,7 +63,7 @@ class CliProvider extends Provider {
     assert(resolveUri == false);
     final stringValue = getOptionalString(key);
     if (stringValue != null) {
-      return _fileSystemPathToUri(stringValue);
+      return Provider.fileSystemPathToUri(stringValue);
     }
     return null;
   }
@@ -83,11 +81,4 @@ class CliProvider extends Provider {
 
   @override
   String toString() => 'CliProvider($_cli)';
-}
-
-Uri _fileSystemPathToUri(String path) {
-  if (path.endsWith(Platform.pathSeparator)) {
-    return Uri.directory(path);
-  }
-  return Uri.file(path);
 }

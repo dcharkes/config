@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'dart:io';
-
 import 'provider.dart';
 
 class FileProvider extends Provider {
@@ -47,7 +45,7 @@ class FileProvider extends Provider {
         return _fileUri!.resolve(path);
       }
     }
-    return _fileSystemPathToUri(path);
+    return Provider.fileSystemPathToUri(path);
   }
 
   @override
@@ -98,11 +96,4 @@ class FileProvider extends Provider {
 
   @override
   String toString() => 'FileProvider(file: $_file, fileUri: $_fileUri)';
-}
-
-Uri _fileSystemPathToUri(String path) {
-  if (path.endsWith(Platform.pathSeparator)) {
-    return Uri.directory(path);
-  }
-  return Uri.file(path);
 }

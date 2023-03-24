@@ -10,6 +10,7 @@ import 'environment_parser.dart';
 import 'environment_provider.dart';
 import 'file_parser.dart';
 import 'file_provider.dart';
+import 'provider.dart';
 
 /// A hierarchical configuration object.
 ///
@@ -161,7 +162,7 @@ class Config {
       value ??= provider.getOptionalString(key);
     }
     if (validValues != null) {
-      _throwIfUnexpectedValue(key, value, validValues);
+      Provider.throwIfUnexpectedValue(key, value, validValues);
     }
     return value;
   }
@@ -326,8 +327,11 @@ class Config {
     }.entries) {
       final provider = entry.key;
       final splitPattern = entry.value;
-      final value =
-          provider.getOptionalPathList(key, splitPattern: splitPattern);
+      final value = provider.getOptionalPathList(
+        key,
+        splitPattern: splitPattern,
+        resolveUri: resolveFileUri && provider == _fileProvider,
+      );
       if (value != null) {
         if (combineAllConfigs) {
           (result ??= []).addAll(value);
@@ -348,14 +352,6 @@ class Config {
   void _throwIfNull(String key, Object? value) {
     if (value == null) {
       throw FormatException('No value was provided for required key: $key');
-    }
-  }
-
-  void _throwIfUnexpectedValue<T>(
-      String key, T value, Iterable<T> validValues) {
-    if (!validValues.contains(value)) {
-      throw FormatException("Unexpected value '$value' for key '$key'. "
-          "Expected one of: ${validValues.map((e) => "'$e'").join(', ')}.");
     }
   }
 

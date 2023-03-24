@@ -217,19 +217,183 @@ void main() {
 
   test('path exists', () async {
     await _inTempDir((tempUri) async {
+      final tempFileUri = tempUri.resolve('file.ext');
+      await File.fromUri(tempFileUri).create();
+      final nonExistUri = tempUri.resolve('foo.ext');
       final config = Config(
         cliDefines: [],
         environment: {},
         fileParsed: {
           'build': {
             'out-dir': tempUri.path,
+            'file': tempFileUri.path,
+            'non-exist': nonExistUri.path
           }
         },
       );
 
       final result = config.getOptionalPath('build.out_dir', mustExist: true);
       expect(result, tempUri);
+      final result2 = config.getOptionalPath('build.file', mustExist: true);
+      expect(result2, tempFileUri);
+      expect(
+        () => config.getOptionalPath('build.non_exist', mustExist: true),
+        throwsFormatException,
+      );
     });
+  });
+
+  test('wrong CLI key format', () {
+    expect(
+      () => Config(cliDefines: ['CAPITALIZED=value']),
+      throwsFormatException,
+    );
+  });
+
+  test('CLI two values when expecting one', () {
+    final config = Config(cliDefines: ['key=value', 'key=value2']);
+    expect(
+      () => config.getString('key'),
+      throwsFormatException,
+    );
+  });
+
+  test('CLI split stringlist', () {
+    final config = Config(cliDefines: ['key=value;value2']);
+    final value = config.getOptionalStringList('key', splitCliPattern: ';');
+    expect(value, ['value', 'value2']);
+  });
+
+  test('CLI path', () {
+    final uri = Uri.file('some/path.ext');
+    final config = Config(cliDefines: ['key=${uri.path}']);
+    final value = config.getOptionalPath('key');
+    expect(value, uri);
+  });
+
+  test('CLI path list', () {
+    final uri = Uri.file('some/path.ext');
+    final uri2 = Uri.file('some/directory/');
+    final config = Config(cliDefines: ['key=${uri.path}:${uri2.path}']);
+    final value = config.getOptionalPathList('key', splitCliPattern: ':');
+    expect(value, [uri, uri2]);
+  });
+
+  test('toString', () {
+    final config = Config(
+      cliDefines: ['key=foo'],
+      environment: {'key': 'bar'},
+      fileParsed: {'key': 'baz'},
+    );
+    config.toString();
+  });
+
+  test('Config ArgumentError', () {
+    expect(
+      () => Config(
+        fileParsed: {'key': 'baz'},
+        fileContents: "{'key': 'baz'}",
+      ),
+      throwsArgumentError,
+    );
+  });
+  test('Missing nonullable throws FormatException', () {
+    final config = Config();
+    expect(() => config.getBool('key'), throwsFormatException);
+    expect(() => config.getString('key'), throwsFormatException);
+    expect(() => config.getPath('key'), throwsFormatException);
+  });
+
+  test('getString not validValue throws FormatException', () {
+    final config = Config(environment: {'foo': 'bar'});
+    expect(
+      () => config.getString('foo', validValues: ['not-bar']),
+      throwsFormatException,
+    );
+  });
+
+  test('getFileValue structured data', () {
+    final config = Config(fileParsed: {
+      'key': {'some': 'map'}
+    });
+    final value = config.getFileValue<Map<dynamic, dynamic>>('key');
+    expect(value, {'some': 'map'});
+  });
+
+  test('environment split stringlist', () {
+    final config = Config(environment: {'key': 'value;value2'});
+    final value =
+        config.getOptionalStringList('key', splitEnvironmentPattern: ';');
+    expect(value, ['value', 'value2']);
+  });
+
+  test('environment non split stringlist', () {
+    final config = Config(environment: {'key': 'value'});
+    final value = config.getOptionalStringList('key');
+    expect(value, ['value']);
+  });
+
+  test('environment path', () {
+    final uri = Uri.file('some/path.ext');
+    final config = Config(environment: {'key': uri.path});
+    final value = config.getOptionalPath('key');
+    expect(value, uri);
+  });
+
+  test('environment path list', () {
+    final uri = Uri.file('some/path.ext');
+    final uri2 = Uri.file('some/directory/');
+    final config = Config(environment: {'key': '${uri.path}:${uri2.path}'});
+    final value =
+        config.getOptionalPathList('key', splitEnvironmentPattern: ':');
+    expect(value, [uri, uri2]);
+  });
+
+  test('Unexpected config file contents', () {
+    expect(() => Config(fileContents: 'asdf'), throwsFormatException);
+    expect(() => Config(fileContents: "['asdf']"), throwsFormatException);
+    expect(
+      () => Config(fileContents: '''foo:
+  bar:
+    WRONGKEY:
+      1
+'''),
+      throwsFormatException,
+    );
+  });
+
+  test('file config try to access object as wrong type', () {
+    final config = Config(fileContents: '''foo:
+  bar:
+    true
+''');
+    expect(config.getBool('foo.bar'), true);
+    expect(() => config.getBool('foo.bar.baz'), throwsFormatException);
+    expect(() => config.getString('foo.bar'), throwsFormatException);
+  });
+
+  test('file config path list unresolved', () {
+    final uri = Uri.file('some/path.ext');
+    final uri2 = Uri.file('some/directory/');
+    final config = Config(fileParsed: {
+      'key': [uri.path, uri2.path]
+    });
+    final value = config.getOptionalPathList('key', resolveFileUri: false);
+    expect(value, [uri, uri2]);
+  });
+
+  test('file config path list resolved', () {
+    final configUri = Uri.file('path/to/config.json');
+    final uri = Uri.file('some/path.ext');
+    final uri2 = Uri.file('some/directory/');
+    final config = Config(
+      fileSourceUri: configUri,
+      fileParsed: {
+        'key': [uri.path, uri2.path]
+      },
+    );
+    final value = config.getOptionalPathList('key', resolveFileUri: true);
+    expect(value, [configUri.resolveUri(uri), configUri.resolveUri(uri2)]);
   });
 }
 
